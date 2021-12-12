@@ -121,8 +121,10 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
 # Tests: 0 array, array longer than 25000 (might need a tweak of the length algo)
 
+import skimage
+
 def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
-                   esigma=1.0, regularization_filter_width=0.5, eshift=0.0, max_iterations=1000, _larch=None):
+                   esigma=1.0, regularization_filter_width=0.5, grid_spacing=None, eshift=0.0, max_iterations=1000, _larch=None):
     """XAS spectral deconvolution
 
     de-convolve a normalized mu(E) spectra with a peak shape, enhancing the
@@ -132,6 +134,8 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     this is not tested sufficiently for publication-quality data. 
     Please validate against other techniques if possible
 
+
+    WARNING: there seems to be some kind of shift somehow.
 
     Arguments
     ----------
@@ -168,15 +172,23 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     eshift = eshift + 0.5 * esigma
 
     en  = remove_dups(energy)
-    estep1 = int(0.1*en[0]) * 2.e-5
     en  = en - en[0]
-    estep = max(estep1, 0.01*int(min(en[1:]-en[:-1])*100.0))
-    npts = 1  + int(max(en) / estep)
-    if npts > 25000:
-        npts = 25001
-        estep = max(en)/25000.0
 
-    x = np.arange(npts)*estep
+    if(not grid_spacing):
+        estep1 = int(0.1*en[0]) * 2.e-5
+        estep = max(estep1, 0.01*int(min(en[1:]-en[:-1])*100.0))
+        npts = 1  + int(max(en) / estep)
+        if npts > 25000:
+            npts = 25001
+            estep = max(en)/25000.0
+
+        x = np.arange(npts)*estep
+
+    else:
+        estep = grid_spacing
+        x = np.arange(0, en[-1], estep)
+        npts = len(x)
+
     y = interp(en, mu, x, kind='cubic')
 
     #
@@ -198,8 +210,12 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     if form.lower().startswith('g'):
         kernel = gaussian
 
-    point_spread_function = kernel(x, center=0, sigma=esigma)
+    point_spread_function = kernel(x, center=x[-1]/2, sigma=esigma)
+    # point_spread_function /= np.sum(point_spread_function)
+    # because r-l flips the psf, it's important that this be rotationally symmetric
+    # plt.plot(np.arange(len(point_spread_function)), point_spread_function)
 
+    # plt.show()
 
     # "I" in Fister et al
     # could use a better name
@@ -208,10 +224,9 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     # Perform deconvolution proper
     # 
 
-    # ret, err = deconvolve(yext, point_spread_function)
 
-    guess = 0.5*np.ones_like(yext) # may want the initial guess to be variable?
-    # On in Fister et al
+    ret = 0.5*np.ones_like(yext) # may want the initial guess to be variable?
+    # "On" in Fister et al
 
     # scikit-image has a richardson_lucy function. However, 
     # we want to smooth on each iteration.
@@ -223,36 +238,51 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
     # how does this really work? I should try to describe it intuitively.
 
-    inverse_point_spread_function = point_spread_function[::-1] #P* in Fister et al
+    flipped_point_spread_function = point_spread_function[::-1] #P* in Fister et al
     convergence = []
+
+    print(point_spread_function)
+    print(yext)
+    # ret = skimage.restoration.richardson_lucy(yext, point_spread_function, num_iter=50, filter_epsilon=False, clip=False)
+    # ret /= 20.0
+    # ret,_ = deconvolve(yext,point_spread_function) 
+
+    # eps = 1e-12
+
+    # for _ in range(50):
+    #     conv = np.convolve(ret, point_spread_function, mode='same') + eps
+    #     relative_blur = yext / conv
+    #     ret *= np.convolve(relative_blur, flipped_point_spread_function, mode='same')
 
     for i in range(max_iterations):
         # convolution is commutative
-        P_conv_On = np.convolve(guess,point_spread_function, mode='same')
+        P_conv_On = np.convolve(ret,point_spread_function, mode='same') + 1e-12
+        # plt.plot(np.arange(len(P_conv_On)), P_conv_On)
+        # plt.plot(np.arange(len(yext)), yext)
+        # plt.show()
         I_over_P_conv_On = yext/P_conv_On # zeros nan here 
-        error_estimate = np.convolve(I_over_P_conv_On,inverse_point_spread_function, mode='same')
+        error_estimate = np.convolve(I_over_P_conv_On,flipped_point_spread_function, mode='same')
 
 
         # re-smooth each iteration - the "regularizing filter"
-        guess = guess * error_estimate
-
-
-        # guess = gaussian_filter(guess * error_estimate, regularization_filter_width)
+        # ret = ret * error_estimate
+        ret = gaussian_filter(ret * error_estimate, regularization_filter_width)
 
         chi_squared = np.sum(((P_conv_On - yext)**2) / yext)
         chi_squared *= 1.0 / len(yext) 
         convergence.append(chi_squared)
 
-    ret = guess
     convergence = np.array(convergence)
 
+    print(ret)
     #
     # Trim, scale, and return output
     #
     nret = min(len(x), len(ret))
-    ret = ret[:nret]*yext[nret-1]/ret[nret-1]
+    ret = ret[:nret]
 
     out = interp(x+eshift, ret, en, kind='cubic')
+    print(out)
     group = set_xafsGroup(group, _larch=_larch)
     group.deconv = out
     group.convergence = convergence

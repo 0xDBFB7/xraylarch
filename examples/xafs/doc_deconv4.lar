@@ -24,11 +24,11 @@ plot_mu(data, show_norm=True, emin=-50, emax=250)
 plot(data.energy, data.deconv, label='deconvolved',  win=1)
 
 
-xas_iterative_deconvolve(data, esigma=core_width('Pt', edge='L3'), max_iterations=50)
+xas_iterative_deconvolve(data, esigma=core_width('Pt', edge='L3'), regularization_filter_width=0.1, max_iterations=100)
 
-decon = group(energy=data.energy, mu=data.deconv, filename=data.filename)
-autobk(decon, rbkg=1.1, kweight=2)
-xftf(decon, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
+# decon = group(energy=data.energy, mu=data.deconv, filename=data.filename)
+# autobk(decon, rbkg=1.1, kweight=2)
+# xftf(decon, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
 
 plot(data.energy, data.deconv, label='iterative_deconvolved',  win=1)
 plot(np.arange(len(data.convergence)), data.convergence, label='Convergence',  win=2)
