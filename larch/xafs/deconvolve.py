@@ -4,6 +4,7 @@
 
 import numpy as np
 from scipy.signal import deconvolve
+from scipy.ndimage import gaussian_filter
 from larch import parse_group_args
 
 from larch.math import (gaussian, lorentzian, interp,
@@ -12,6 +13,9 @@ from larch.math import (gaussian, lorentzian, interp,
 
 from .xafsutils import set_xafsGroup
 
+import matplotlib.pyplot as plt
+
+
 def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
                    esigma=1.0, eshift=0.0, smooth=True,
                    sgwindow=None, sgorder=3, _larch=None):
@@ -19,6 +23,8 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
     de-convolve a normalized mu(E) spectra with a peak shape, enhancing the
     intensity and separation of peaks of a XANES spectrum.
+
+    This uses numpy's "deconvolve" function, using inverse filtering.
 
     The results can be unstable, and noisy, and should be used
     with caution!
@@ -98,9 +104,11 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
 
 
-# Arguments for and against separate function:
-# sg is not needed 
-
+# Arguments for and against separate function: 
+# Safer, less scary
+# deconvolve already takes a bunch of args,
+# sg smoothing is not needed
+# breaks DRY, lots of identical setup / teardown code
 
             # try:
             #     import skimage
@@ -111,16 +119,19 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
             #     self._logger.error('skimage not found')
             #     self._ms = None
 
+# Tests: 0 array, array longer than 25000 (might need a tweak of the length algo)
+
 def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
-                   esigma=1.0, eshift=0.0, smooth=True,
-                   sgwindow=None, sgorder=3, _larch=None):
+                   esigma=1.0, regularization_filter_width=0.5, eshift=0.0, max_iterations=1000, _larch=None):
     """XAS spectral deconvolution
 
     de-convolve a normalized mu(E) spectra with a peak shape, enhancing the
     intensity and separation of peaks of a XANES spectrum.
 
-    The results can be unstable, and noisy, and should be used
-    with caution!
+    If the plain deconvolution needs attention,
+    this is not tested sufficiently for publication-quality data. 
+    Please validate against other techniques if possible
+
 
     Arguments
     ----------
@@ -146,18 +157,15 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
        Support See First Argument Group convention, requiring group
        members 'energy' and 'norm'
 
-       Smoothing with savitzky_golay() requires a window and order.  By
-       default, window = int(esigma / estep) where estep is step size for
-       the gridded data, approximately the finest energy step in the data.
     """
+
+    #
+    # Setup 
+    #
     energy, mu, group = parse_group_args(energy, members=('energy', 'norm'),
                                          defaults=(norm,), group=group,
                                          fcn_name='xas_deconvolve')
     eshift = eshift + 0.5 * esigma
-
-    ## Preparation
-    ##
-    ## 
 
     en  = remove_dups(energy)
     estep1 = int(0.1*en[0]) * 2.e-5
@@ -171,34 +179,89 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     x = np.arange(npts)*estep
     y = interp(en, mu, x, kind='cubic')
 
-    ## Lucy-Richardson deconvolution
-    ##
-    ## 
+    #
+    # ??!? is this a window function or supposed to be padding
+    #
+    # yext = np.concatenate((y, np.arange(len(y))*y[-1]))
+    yext = y
 
+    # plt.plot(np.arange(len(P_conv_On)), P_conv_On)
+    # plt.plot(np.arange(len(I_over_P_conv_On)), I_over_P_conv_On)
+    # plt.plot(np.arange(len(error_estimate)), error_estimate)
+    # plt.plot(np.arange(len(guess)), guess)
+
+    # plt.show()
+    #
+    # Process PSF / experimental distribution kernel
+    #
     kernel = lorentzian
     if form.lower().startswith('g'):
         kernel = gaussian
 
-    yext = np.concatenate((y, np.arange(len(y))*y[-1]))
+    point_spread_function = kernel(x, center=0, sigma=esigma)
 
-    ret, err = deconvolve(yext, kernel(x, center=0, sigma=esigma))
+
+    # "I" in Fister et al
+    # could use a better name
+
+    #
+    # Perform deconvolution proper
+    # 
+
+    # ret, err = deconvolve(yext, point_spread_function)
+
+    guess = 0.5*np.ones_like(yext) # may want the initial guess to be variable?
+    # On in Fister et al
+
+    # scikit-image has a richardson_lucy function. However, 
+    # we want to smooth on each iteration.
+
+    # constructed referring to 
+    # https://github.com/chrrrisw/RL_deconv
+    # and 
+    # https://github.com/scikit-image/scikit-image/blob/602d94d35d3a04e6b66583c3a1a355bfbe381224/skimage/restoration/deconvolution.py
+
+    # how does this really work? I should try to describe it intuitively.
+
+    inverse_point_spread_function = point_spread_function[::-1] #P* in Fister et al
+    convergence = []
+
+    for i in range(max_iterations):
+        # convolution is commutative
+        P_conv_On = np.convolve(guess,point_spread_function, mode='same')
+        I_over_P_conv_On = yext/P_conv_On # zeros nan here 
+        error_estimate = np.convolve(I_over_P_conv_On,inverse_point_spread_function, mode='same')
+
+
+        # re-smooth each iteration - the "regularizing filter"
+        guess = guess * error_estimate
+
+
+        # guess = gaussian_filter(guess * error_estimate, regularization_filter_width)
+
+        chi_squared = np.sum(((P_conv_On - yext)**2) / yext)
+        chi_squared *= 1.0 / len(yext) 
+        convergence.append(chi_squared)
+
+    ret = guess
+    convergence = np.array(convergence)
+
+    #
+    # Trim, scale, and return output
+    #
     nret = min(len(x), len(ret))
-
     ret = ret[:nret]*yext[nret-1]/ret[nret-1]
-    if smooth:
-        if sgwindow is None:
-            sgwindow = int(1.0*esigma/estep)
-
-        sqwindow = int(sgwindow)
-        if sgwindow < (sgorder+1):
-            sgwindow = sgorder + 2
-        if sgwindow % 2 == 0:
-            sgwindow += 1
-        ret = savitzky_golay(ret, sgwindow, sgorder)
 
     out = interp(x+eshift, ret, en, kind='cubic')
     group = set_xafsGroup(group, _larch=_larch)
     group.deconv = out
+    group.convergence = convergence
+
+
+# def xas_iterative_deconvolve_robustness(energy, norm=None, group=None, form='lorentzian',
+
+
+
 
 
 def xas_convolve(energy, norm=None, group=None, form='lorentzian',

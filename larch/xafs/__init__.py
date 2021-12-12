@@ -41,7 +41,7 @@ from .feff8lpath import feff8_xafs
 from .feffutils import get_feff_pathinfo
 
 from .cauchy_wavelet import cauchy_wavelet
-from .deconvolve import xas_convolve, xas_deconvolve
+from .deconvolve import xas_convolve, xas_deconvolve, xas_iterative_deconvolve
 from .estimate_noise import estimate_noise
 from .rebin_xafs import rebin_xafs, sort_xafs
 from .sigma2_models import sigma2_eins, sigma2_debye, sigma2_correldebye, gnxas
@@ -68,6 +68,7 @@ _larch_builtins = {'_xafs': dict(autobk=autobk, etok=etok, ktoe=ktoe,
                                  mback=mback, mback_norm=mback_norm,
                                  cauchy_wavelet=cauchy_wavelet,
                                  xas_deconvolve=xas_deconvolve,
+                                 xas_iterative_deconvolve=xas_iterative_deconvolve,
                                  xas_convolve=xas_convolve,
                                  fluo_corr=fluo_corr,
                                  estimate_noise=estimate_noise,
