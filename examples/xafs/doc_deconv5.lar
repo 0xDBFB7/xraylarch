@@ -3,42 +3,54 @@
 
 
 
-data = read_ascii('../xafsdata/pt_metal_rt.xdi', labels='energy time i1 i0')
+# data = read_ascii('../xafsdata/pt_metal_rt.xdi', labels='energy time i1 i0')
 
-data.mu = -log(data.i1 / data.i0)
-data.mu += np.random.normal(0,0.01,len(data.mu))
-
-
-pre_edge(data)
-autobk(data, rbkg=1.1, kweight=2)
-xftf(data, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
-
-# original = np.copy(data.norm)
-plot_mu(data, show_norm=True, emin=-50, emax=250)
-
-data.norm = smooth(data.energy, data.norm, sigma=core_width('Pt', edge='L3'))
-
-xas_deconvolve(data, esigma=core_width('Pt', edge='L3'), smooth=False)
-
-decon = group(energy=data.energy, mu=data.deconv, filename=data.filename)
-autobk(decon, rbkg=1.1, kweight=2)
-xftf(decon, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
-
-# plot in E
-# plot(data.energy, original, label='deconvolved',  win=1)
-
-plot(data.energy, data.deconv, label='deconvolved',  win=1)
+# data.mu = -log(data.i1 / data.i0)
+# data.mu += np.random.normal(0,0.01,len(data.mu))
 
 
-xas_iterative_deconvolve(data, esigma=core_width('Pt', edge='L3'), eshift=-4.0, regularization_filter_width=0.005, max_iterations=100)
+# pre_edge(data)
+# autobk(data, rbkg=1.1, kweight=2)
+# xftf(data, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
 
-# decon = group(energy=data.energy, mu=data.deconv, filename=data.filename)
-# autobk(decon, rbkg=1.1, kweight=2)
-# xftf(decon, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
+# # original = np.copy(data.norm)
+# plot_mu(data, show_norm=True, emin=-50, emax=250)
 
-plot(data.energy, data.deconv, label='iterative_deconvolved',  win=1)
-plot(np.arange(len(data.convergence)), data.convergence, label='Convergence',  win=2)
+# data.norm = smooth(data.energy, data.norm, sigma=core_width('Pt', edge='L3'))
+# data.mu = smooth(data.energy, data.mu, sigma=core_width('Pt', edge='L3'))
 
+# xas_deconvolve(data, esigma=core_width('Pt', edge='L3'), smooth=False) 
+# plot(data.energy, data.deconv+1e-4, label='Inverse deconvolve',  win=1)
+
+# xas_deconvolve(data, esigma=core_width('Pt', edge='L3'), smooth=True)
+# plot(data.energy, data.deconv, label='Inverse deconvolve, smoothing',  win=1)
+
+# xas_iterative_deconvolve(data, esigma=core_width('Pt', edge='L3'), eshift=-3.8, regularization_filter_width=0.005, max_iterations=100)
+
+# plot(data.energy, data.deconv, label='iterative_deconvolved',  win=1)
+# plot(np.arange(len(data.convergence)), data.convergence, label='Convergence',  win=2)
+
+## examples/xafs/doc_deconv2.lar
+
+dat = read_ascii('../xafsdata/cu_metal_rt.xdi', labels='energy i0 i1 mu')
+dat.mu = -log(dat.i1 / dat.i0)
+
+pre_edge(dat)
+
+esigma = core_width('Cu', edge='K')
+
+xas_iterative_deconvolve(dat, esigma=esigma, regularization_filter_width=0.05, max_iterations=100)
+
+plot_mu(dat, show_norm=True, emin=-50, emax=250)
+plot(dat.energy, dat.deconv, label='deconvolved')
+
+# Test convolution:
+test = group(energy=dat.energy, norm=dat.deconv)
+xas_convolve(test, esigma=esigma)
+plot_mu(dat, show_norm=True, emin=-50, emax=250, win=2)
+plot(dat.energy, test.conv, label='re-convolved',win=2)
+# plot(test.energy, 100*(test.conv-dat.norm),
+#      label='(reconvolved - original)x100', win=2)
 
 
 

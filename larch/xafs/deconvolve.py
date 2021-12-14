@@ -66,6 +66,7 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
     estep1 = int(0.1*en[0]) * 2.e-5
     en  = en - en[0]
     estep = max(estep1, 0.01*int(min(en[1:]-en[:-1])*100.0))
+
     npts = 1  + int(max(en) / estep)
     if npts > 25000:
         npts = 25001
@@ -102,6 +103,16 @@ def xas_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
 
 
+
+def warp_array(input_function, energies, warp_function):
+    incremental_energies = (energies[-1]/len(energies))*np.ones_like(energies) # first assume linear sampling
+    warped_incremental_energies = incremental_energies / (warp_function/np.min(warp_function))
+    warped_energies = np.cumsum(warped_incremental_energies) - warped_incremental_energies[0]
+
+    warped_new_uniform_grid = np.linspace(0,warped_energies[-1], samples)
+    re_sampled_warped_convolved = interpolate.interp1d(warped_energies, input_function, kind="cubic")(warped_new_uniform_grid)
+
+    return warped_new_uniform_grid, re_sampled_warped_convolved
 
 
 # Arguments for and against separate function: 
@@ -174,8 +185,11 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     en  = remove_dups(energy)
     en  = en - en[0]
 
+    print("energy:",en)
     if(not grid_spacing):
         estep1 = int(0.1*en[0]) * 2.e-5
+        print(0.01*int(min(en[1:]-en[:-1])*100.0))
+        print(en[1:],en[:-1])
         estep = max(estep1, 0.01*int(min(en[1:]-en[:-1])*100.0))
         npts = 1  + int(max(en) / estep)
         if npts > 25000:
@@ -241,8 +255,6 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     flipped_point_spread_function = point_spread_function[::-1] #P* in Fister et al
     convergence = []
 
-    print(point_spread_function)
-    print(yext)
     # ret = skimage.restoration.richardson_lucy(yext, point_spread_function, num_iter=50, filter_epsilon=False, clip=False)
     # ret /= 20.0
     # ret,_ = deconvolve(yext,point_spread_function) 
@@ -274,7 +286,7 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
 
     convergence = np.array(convergence)
 
-    print(ret)
+
     #
     # Trim, scale, and return output
     #
@@ -282,7 +294,7 @@ def xas_iterative_deconvolve(energy, norm=None, group=None, form='lorentzian',
     ret = ret[:nret]
 
     out = interp(x+eshift, ret, en, kind='cubic')
-    print(out)
+
     group = set_xafsGroup(group, _larch=_larch)
     group.deconv = out
     group.convergence = convergence

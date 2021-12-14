@@ -41,7 +41,7 @@ from .feff8lpath import feff8_xafs
 from .feffutils import get_feff_pathinfo
 
 from .cauchy_wavelet import cauchy_wavelet
-from .deconvolve import xas_convolve, xas_deconvolve, xas_iterative_deconvolve
+from .deconvolve import xas_convolve, xas_deconvolve, xas_iterative_deconvolve, warp_array
 from .estimate_noise import estimate_noise
 from .rebin_xafs import rebin_xafs, sort_xafs
 from .sigma2_models import sigma2_eins, sigma2_debye, sigma2_correldebye, gnxas

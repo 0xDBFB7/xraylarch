@@ -31,8 +31,7 @@ xas_iterative_deconvolve(data, esigma=core_width('Pt', edge='L3'), eshift=-4.0, 
 # xftf(decon, kmin=2, kmax=17, dk=5, kwindow='kaiser', kweight=2)
 
 plot(data.energy, data.deconv, label='iterative_deconvolved',  win=1)
-plot(np.arange(len(data.convergence)), data.convergence, label='Convergence',  win=2)
-
+plot(np.arange(len(data.convergence)), np.log10(data.convergence), label='Convergence',  win=2)
 
 
 
